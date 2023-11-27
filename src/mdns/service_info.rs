@@ -252,7 +252,7 @@ impl ServiceInfo {
 
     /// Returns a list of addresses that are in the same LAN as
     /// the interface `intf`.
-    pub(crate) fn get_addrs_on_intf(&self, intf: &Interface) -> Vec<IpAddr> {
+    pub fn get_addrs_on_intf(&self, intf: &Interface) -> Vec<IpAddr> {
         self.addresses
             .iter()
             .filter(|a| valid_ip_on_intf(a, intf))
@@ -261,7 +261,7 @@ impl ServiceInfo {
     }
 
     /// Returns whether the service info is ready to be resolved.
-    pub(crate) fn is_ready(&self) -> bool {
+    pub fn is_ready(&self) -> bool {
         let some_missing = self.ty_domain.is_empty()
             || self.fullname.is_empty()
             || self.server.is_empty()
@@ -271,28 +271,28 @@ impl ServiceInfo {
     }
 
     /// Insert `addr` into service info addresses.
-    pub(crate) fn insert_ipaddr(&mut self, addr: IpAddr) {
+    pub fn insert_ipaddr(&mut self, addr: IpAddr) {
         self.addresses.insert(addr);
     }
 
-    pub(crate) fn remove_ipaddr(&mut self, addr: &IpAddr) {
+    pub fn remove_ipaddr(&mut self, addr: &IpAddr) {
         self.addresses.remove(addr);
     }
 
-    pub(crate) fn generate_txt(&self) -> Vec<u8> {
+    pub fn generate_txt(&self) -> Vec<u8> {
         encode_txt(self.get_properties().iter())
     }
 
-    pub(crate) fn set_port(&mut self, port: u16) {
+    pub fn set_port(&mut self, port: u16) {
         self.port = port;
     }
 
-    pub(crate) fn set_hostname(&mut self, hostname: String) {
+    pub fn set_hostname(&mut self, hostname: String) {
         self.server = hostname;
     }
 
     /// Returns true if properties are updated.
-    pub(crate) fn set_properties_from_txt(&mut self, txt: &[u8]) -> bool {
+    pub fn set_properties_from_txt(&mut self, txt: &[u8]) -> bool {
         let properties = decode_txt_unique(txt);
         if self.txt_properties.properties != properties {
             self.txt_properties = TxtProperties { properties };
@@ -302,7 +302,7 @@ impl ServiceInfo {
         }
     }
 
-    pub(crate) fn set_subtype(&mut self, subtype: String) {
+    pub fn set_subtype(&mut self, subtype: String) {
         self.sub_domain = Some(subtype);
     }
 }
@@ -711,7 +711,7 @@ pub(crate) fn valid_ip_on_intf(addr: &IpAddr, intf: &Interface) -> bool {
 }
 
 /// Returns the netmask part of `addr` as `u128` for IPv4 and IPv6 address.
-pub(crate) fn ifaddr_netmask(addr: &IfAddr) -> u128 {
+pub fn ifaddr_netmask(addr: &IfAddr) -> u128 {
     match addr {
         IfAddr::V4(addrv4) => u32::from(addrv4.netmask) as u128,
         IfAddr::V6(addrv6) => u128::from(addrv6.netmask),

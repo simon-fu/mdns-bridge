@@ -35,13 +35,13 @@ pub(crate) const TYPE_HINFO: u16 = 13;
 pub(crate) const TYPE_TXT: u16 = 16;
 pub(crate) const TYPE_AAAA: u16 = 28; // IPv6 address
 pub(crate) const TYPE_SRV: u16 = 33;
-pub(crate) const TYPE_ANY: u16 = 255;
+pub const TYPE_ANY: u16 = 255;
 
-pub(crate) const CLASS_IN: u16 = 1;
+pub const CLASS_IN: u16 = 1;
 pub(crate) const CLASS_MASK: u16 = 0x7FFF;
 pub(crate) const CLASS_UNIQUE: u16 = 0x8000;
 
-pub(crate) const MAX_MSG_ABSOLUTE: usize = 8966;
+pub const MAX_MSG_ABSOLUTE: usize = 8966;
 
 // Definitions for DNS message header "flags" field
 //
@@ -54,12 +54,12 @@ pub(crate) const MAX_MSG_ABSOLUTE: usize = 8966;
 pub(crate) const FLAGS_QR_MASK: u16 = 0x8000; // mask for query/response bit
 pub(crate) const FLAGS_QR_QUERY: u16 = 0x0000;
 pub(crate) const FLAGS_QR_RESPONSE: u16 = 0x8000;
-pub(crate) const FLAGS_AA: u16 = 0x0400; // mask for Authoritative answer bit
+pub const FLAGS_AA: u16 = 0x0400; // mask for Authoritative answer bit
 
 pub type DnsRecordBox = Box<dyn DnsRecordExt + Send>;
 
 #[derive(PartialEq, Debug)]
-pub(crate) struct DnsEntry {
+pub struct DnsEntry {
     pub(crate) name: String, // always lower case.
     pub(crate) ty: u16,
     class: u16,
@@ -80,7 +80,7 @@ impl DnsEntry {
 /// A DNS question entry
 #[derive(Debug)]
 pub struct DnsQuestion {
-    pub(crate) entry: DnsEntry,
+    pub entry: DnsEntry,
 }
 
 /// A DNS Resource Record - like a DNS entry, but has a TTL.
@@ -112,29 +112,29 @@ impl DnsRecord {
         }
     }
 
-    pub(crate) fn get_created(&self) -> u64 {
+    pub fn get_created(&self) -> u64 {
         self.created
     }
 
-    pub(crate) fn get_expire_time(&self) -> u64 {
+    pub fn get_expire_time(&self) -> u64 {
         self.expires
     }
 
-    pub(crate) fn get_refresh_time(&self) -> u64 {
+    pub fn get_refresh_time(&self) -> u64 {
         self.refresh
     }
 
-    pub(crate) fn is_expired(&self, now: u64) -> bool {
+    pub fn is_expired(&self, now: u64) -> bool {
         now >= self.expires
     }
 
-    pub(crate) fn refresh_due(&self, now: u64) -> bool {
+    pub fn refresh_due(&self, now: u64) -> bool {
         now >= self.refresh
     }
 
     /// Updates the refresh time to be the same as the expire time so that
     /// this record will not refresh again and will just expire.
-    pub(crate) fn refresh_no_more(&mut self) {
+    pub fn refresh_no_more(&mut self) {
         self.refresh = get_expiration_time(self.created, self.ttl, 100);
     }
 

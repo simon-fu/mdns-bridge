@@ -1,18 +1,18 @@
-use std::net::{SocketAddr, Ipv4Addr, Ipv6Addr, IpAddr, SocketAddrV4};
-use anyhow::{Result, bail, Context};
+
+use anyhow::Result;
 use time::{UtcOffset, macros::format_description};
-use tokio::net::UdpSocket;
-use tracing::{debug, level_filters::LevelFilter};
+
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, fmt::{time::OffsetTime, MakeWriter}};
 
-use crate::mdns::dns_parser::DnsIncoming;
 
-pub mod mdns;
+// pub mod mdns;
 pub mod bridge_mdns;
 
-fn main() {
+fn main() -> Result<()>{
     init_log();
-    bridge_mdns::run_main();
+    bridge_mdns::run_main()?;
+    Ok(())
 }
 
 // #[tokio::main]
@@ -96,75 +96,75 @@ fn main() {
 // }
 
 
-async fn recv_and_dump() -> Result<()> {
-    let multi_addr = "224.0.0.251:5353";
-    // let if_addr  = "0.0.0.0";
-    let if_addr  = "172.16.3.210";
+// async fn recv_and_dump() -> Result<()> {
+//     let multi_addr = "224.0.0.251:5353";
+//     // let if_addr  = "0.0.0.0";
+//     let if_addr  = "172.16.3.210";
     
     
-    let std_socket = bind_multicast(multi_addr, Some(if_addr))?;
-    std_socket.set_nonblocking(true)?;
-    let socket = UdpSocket::from_std(std_socket)?;
+//     let std_socket = bind_multicast(multi_addr, Some(if_addr))?;
+//     std_socket.set_nonblocking(true)?;
+//     let socket = UdpSocket::from_std(std_socket)?;
 
 
-    let multi_addr: SocketAddr = multi_addr.parse()?;
-    debug!("listening at [{multi_addr}-{if_addr}]");
-    let mut buf = vec![0; 1700];
+//     let multi_addr: SocketAddr = multi_addr.parse()?;
+//     debug!("listening at [{multi_addr}-{if_addr}]");
+//     let mut buf = vec![0; 1700];
 
-    loop {
-        let (len, from_addr) = socket.recv_from(&mut buf).await?;
-        // debug!("-- recv bytes {from_addr}, {len}");
-        if len == 0 {
-            break;
-        }
+//     loop {
+//         let (len, from_addr) = socket.recv_from(&mut buf).await?;
+//         // debug!("-- recv bytes {from_addr}, {len}");
+//         if len == 0 {
+//             break;
+//         }
 
-        let r = find_subsequence(&buf[..len], ":6112".as_bytes());
-        if r.is_none() {
-            continue;
-        }
+//         let r = find_subsequence(&buf[..len], ":6112".as_bytes());
+//         if r.is_none() {
+//             continue;
+//         }
 
-        let mut dup_buf = buf.clone();
-        dup_buf.resize(len, 0);
+//         let mut dup_buf = buf.clone();
+//         dup_buf.resize(len, 0);
 
-        let r = DnsIncoming::new(dup_buf);
-        match r {
-            Ok(incoming) => debug!("{incoming:?}"),
-            Err(e) => debug!("parsing failed: [{e:?}]"),
-        }
-    }
+//         let r = DnsIncoming::new(dup_buf);
+//         match r {
+//             Ok(incoming) => debug!("{incoming:?}"),
+//             Err(e) => debug!("parsing failed: [{e:?}]"),
+//         }
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
-}
+// fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+//     haystack.windows(needle.len()).position(|window| window == needle)
+// }
 
-async fn send_rubbish() -> Result<()> {
-    let multi_addr = "224.0.0.251:5353";
-    let if_addr  = "0.0.0.0";
+// async fn send_rubbish() -> Result<()> {
+//     let multi_addr = "224.0.0.251:5353";
+//     let if_addr  = "0.0.0.0";
     
-    let std_socket = bind_multicast(multi_addr, Some(if_addr))?;
-    std_socket.set_nonblocking(true)?;
-    let socket = UdpSocket::from_std(std_socket)?;
+//     let std_socket = bind_multicast(multi_addr, Some(if_addr))?;
+//     std_socket.set_nonblocking(true)?;
+//     let socket = UdpSocket::from_std(std_socket)?;
 
 
-    let multi_addr: SocketAddr = multi_addr.parse()?;
+//     let multi_addr: SocketAddr = multi_addr.parse()?;
 
-    debug!("listening at [{multi_addr}-{if_addr}]");
+//     debug!("listening at [{multi_addr}-{if_addr}]");
 
-    loop {
-        let data = "abc123".as_bytes();
-        let sent_bytes = socket.send_to(data, multi_addr).await.with_context(||"send failed")?;
-        debug!("sent bytes {multi_addr}, {sent_bytes}", );
-        if sent_bytes == 0 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-    }
+//     loop {
+//         let data = "abc123".as_bytes();
+//         let sent_bytes = socket.send_to(data, multi_addr).await.with_context(||"send failed")?;
+//         debug!("sent bytes {multi_addr}, {sent_bytes}", );
+//         if sent_bytes == 0 {
+//             break;
+//         }
+//         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub(crate) fn init_log() {
     init_log2(||std::io::stdout())
@@ -200,142 +200,142 @@ where
     // .with_env_filter("rtun=debug,rserver=debug")
     .with_writer(w)
     .with_timer(timer)
-    .with_target(true)
+    .with_target(false)
     .init();
 }
 
-fn bind_multicast(
-    multi_addr: &str,
-    if_addr: Option<&str>,
-) -> Result<std::net::UdpSocket> {
-    let multi_addr: SocketAddr = multi_addr.parse()?;
+// fn bind_multicast(
+//     multi_addr: &str,
+//     if_addr: Option<&str>,
+// ) -> Result<std::net::UdpSocket> {
+//     let multi_addr: SocketAddr = multi_addr.parse()?;
 
-    let if_addr = match if_addr {
-        Some(v) => Some(v.parse()?),
-        None => None,
-    };
+//     let if_addr = match if_addr {
+//         Some(v) => Some(v.parse()?),
+//         None => None,
+//     };
 
-    bind_multicast_ip(&multi_addr, if_addr)
-}
+//     bind_multicast_ip(&multi_addr, if_addr)
+// }
 
-fn bind_multicast_ip(
-    multi_addr: &SocketAddr,
-    if_addr: Option<IpAddr>,
-) -> Result<std::net::UdpSocket> {
-    use socket2::{Domain, Type, Protocol, Socket};
+// fn bind_multicast_ip(
+//     multi_addr: &SocketAddr,
+//     if_addr: Option<IpAddr>,
+// ) -> Result<std::net::UdpSocket> {
+//     use socket2::{Domain, Type, Protocol, Socket};
 
-    // assert!(multi_addr.ip().is_multicast(), "Must be multcast address");
+//     // assert!(multi_addr.ip().is_multicast(), "Must be multcast address");
 
-    match *multi_addr {
-        SocketAddr::V4(multi_addr) => { 
+//     match *multi_addr {
+//         SocketAddr::V4(multi_addr) => { 
             
-            let domain = Domain::IPV4;
+//             let domain = Domain::IPV4;
 
-            let interface = match if_addr {
-                Some(v) => match v {
-                    IpAddr::V4(v) => v,
-                    IpAddr::V6(_) => bail!("multi addr v4 but if addr v6"),
-                },
-                None => Ipv4Addr::new(0, 0, 0, 0),
-            };
+//             let interface = match if_addr {
+//                 Some(v) => match v {
+//                     IpAddr::V4(v) => v,
+//                     IpAddr::V6(_) => bail!("multi addr v4 but if addr v6"),
+//                 },
+//                 None => Ipv4Addr::new(0, 0, 0, 0),
+//             };
 
-            // parse_interface_or(xfer, ||Ok(Ipv4Addr::new(0, 0, 0, 0)))
-            // .with_context(||format!("invalid ipv4 [{:?}]", xfer))?;
+//             // parse_interface_or(xfer, ||Ok(Ipv4Addr::new(0, 0, 0, 0)))
+//             // .with_context(||format!("invalid ipv4 [{:?}]", xfer))?;
             
-            debug!("udp addr: multicast [{}], ipv4 iface [{}]", multi_addr, interface);
+//             debug!("udp addr: multicast [{}], ipv4 iface [{}]", multi_addr, interface);
 
-            // let if_addr = SocketAddr::new(interface.into(), multi_addr.port());
+//             // let if_addr = SocketAddr::new(interface.into(), multi_addr.port());
 
-            let socket = Socket::new(
-                domain,
-                Type::DGRAM,
-                Some(Protocol::UDP),
-            )?;
-            socket.set_reuse_address(true)?;
-            socket.set_reuse_port(true)?;
-            // // socket.bind(&socket2::SockAddr::from(if_addr))?;
-            // // socket.bind(&socket2::SockAddr::from(multi_addr))?;
-            // try_bind_multicast(&socket, &multi_addr.into())?;
+//             let socket = Socket::new(
+//                 domain,
+//                 Type::DGRAM,
+//                 Some(Protocol::UDP),
+//             )?;
+//             socket.set_reuse_address(true)?;
+//             socket.set_reuse_port(true)?;
+//             // // socket.bind(&socket2::SockAddr::from(if_addr))?;
+//             // // socket.bind(&socket2::SockAddr::from(multi_addr))?;
+//             // try_bind_multicast(&socket, &multi_addr.into())?;
 
-            let bind_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port());
-            // let bind_addr = SocketAddrV4::new(interface, multi_addr.port());
-            socket.bind(&socket2::SockAddr::from(bind_addr))?;
+//             let bind_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port());
+//             // let bind_addr = SocketAddrV4::new(interface, multi_addr.port());
+//             socket.bind(&socket2::SockAddr::from(bind_addr))?;
             
 
-            // 接收端好像没什么用
-            // 发送端设置为true时，可以用同一个 socket 收到自己发送的数据
-            socket.set_multicast_loop_v4(false)?;  
+//             // 接收端好像没什么用
+//             // 发送端设置为true时，可以用同一个 socket 收到自己发送的数据
+//             socket.set_multicast_loop_v4(false)?;  
 
-            // join to the multicast address, with all interfaces
-            socket.join_multicast_v4(
-                multi_addr.ip(),
-                &interface,
-            )?;
+//             // join to the multicast address, with all interfaces
+//             socket.join_multicast_v4(
+//                 multi_addr.ip(),
+//                 &interface,
+//             )?;
 
-            Ok(socket.into())
-        },
-        SocketAddr::V6(multi_addr) => {
+//             Ok(socket.into())
+//         },
+//         SocketAddr::V6(multi_addr) => {
             
-            let domain = Domain::IPV6;
+//             let domain = Domain::IPV6;
 
-            let interface = match if_addr {
-                Some(v) => match v {
-                    IpAddr::V4(_v) => bail!("multi addr v6 but if addr v4"),
-                    IpAddr::V6(v) => v,
-                },
-                None => Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-            };
+//             let interface = match if_addr {
+//                 Some(v) => match v {
+//                     IpAddr::V4(_v) => bail!("multi addr v6 but if addr v4"),
+//                     IpAddr::V6(v) => v,
+//                 },
+//                 None => Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+//             };
 
-            // let interface = parse_interface_or(xfer, ||Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)))
-            // .with_context(||format!("invalid ipv6 [{:?}]", xfer))?;
-            debug!("udp addr: multicast [{}], ipv6 iface [{}]", multi_addr, interface);
+//             // let interface = parse_interface_or(xfer, ||Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)))
+//             // .with_context(||format!("invalid ipv6 [{:?}]", xfer))?;
+//             debug!("udp addr: multicast [{}], ipv6 iface [{}]", multi_addr, interface);
 
-            // let if_addr = SocketAddr::new(interface.into(), multi_addr.port());
+//             // let if_addr = SocketAddr::new(interface.into(), multi_addr.port());
 
-            let socket = Socket::new(
-                domain,
-                Type::DGRAM,
-                Some(Protocol::UDP),
-            )?;
-            // reuse address 是允许多个进程监听同一个地址:端口，但是同一个进程绑定两次会有问题？
-            // reuse port 是多个socket负载均衡
-            // 参考： https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
-            socket.set_reuse_address(true)?;
-            // socket.bind(&socket2::SockAddr::from(if_addr))?;
-            // socket.bind(&socket2::SockAddr::from(multi_addr))?;
-            try_bind_multicast(&socket, &multi_addr.into())?;
+//             let socket = Socket::new(
+//                 domain,
+//                 Type::DGRAM,
+//                 Some(Protocol::UDP),
+//             )?;
+//             // reuse address 是允许多个进程监听同一个地址:端口，但是同一个进程绑定两次会有问题？
+//             // reuse port 是多个socket负载均衡
+//             // 参考： https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
+//             socket.set_reuse_address(true)?;
+//             // socket.bind(&socket2::SockAddr::from(if_addr))?;
+//             // socket.bind(&socket2::SockAddr::from(multi_addr))?;
+//             try_bind_multicast(&socket, &multi_addr.into())?;
 
-            socket.set_multicast_loop_v6(false)?;
+//             socket.set_multicast_loop_v6(false)?;
 
-            // join to the multicast address, with all interfaces (ipv6 uses indexes not addresses)
-            socket.join_multicast_v6(
-                multi_addr.ip(),
-                0,
-            )?;
+//             // join to the multicast address, with all interfaces (ipv6 uses indexes not addresses)
+//             socket.join_multicast_v6(
+//                 multi_addr.ip(),
+//                 0,
+//             )?;
 
-            Ok(socket.into())
-        },
-    }
+//             Ok(socket.into())
+//         },
+//     }
 
     
-}
+// }
 
-/// On Windows, unlike all Unix variants, it is improper to bind to the multicast address
-///
-/// see https://msdn.microsoft.com/en-us/library/windows/desktop/ms737550(v=vs.85).aspx
-#[cfg(windows)]
-fn try_bind_multicast(socket: &socket2::Socket, addr: &SocketAddr) -> std::io::Result<()> {
-    let addr = match *addr {
-        SocketAddr::V4(addr) => SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), addr.port()),
-        SocketAddr::V6(addr) => {
-            SocketAddr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(), addr.port())
-        }
-    };
-    socket.bind(&socket2::SockAddr::from(addr))
-}
+// /// On Windows, unlike all Unix variants, it is improper to bind to the multicast address
+// ///
+// /// see https://msdn.microsoft.com/en-us/library/windows/desktop/ms737550(v=vs.85).aspx
+// #[cfg(windows)]
+// fn try_bind_multicast(socket: &socket2::Socket, addr: &SocketAddr) -> std::io::Result<()> {
+//     let addr = match *addr {
+//         SocketAddr::V4(addr) => SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), addr.port()),
+//         SocketAddr::V6(addr) => {
+//             SocketAddr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(), addr.port())
+//         }
+//     };
+//     socket.bind(&socket2::SockAddr::from(addr))
+// }
 
-/// On unixes we bind to the multicast address, which causes multicast packets to be filtered
-#[cfg(unix)]
-fn try_bind_multicast(socket: &socket2::Socket, addr: &SocketAddr) -> std::io::Result<()> {
-    socket.bind(&socket2::SockAddr::from(*addr))
-}
+// /// On unixes we bind to the multicast address, which causes multicast packets to be filtered
+// #[cfg(unix)]
+// fn try_bind_multicast(socket: &socket2::Socket, addr: &SocketAddr) -> std::io::Result<()> {
+//     socket.bind(&socket2::SockAddr::from(*addr))
+// }
