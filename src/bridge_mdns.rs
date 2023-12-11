@@ -1,5 +1,6 @@
 extern crate pnet;
 
+use clap::Parser;
 use pnet::datalink::{self, NetworkInterface, DataLinkReceiver, DataLinkSender};
 use pnet::ipnetwork::IpNetwork;
 use pnet::packet::ip::IpNextHeaderProtocols;
@@ -11,6 +12,7 @@ use pnet::util::MacAddr;
 use tracing::{debug, error};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use anyhow::{Result, Context, bail, anyhow};
@@ -18,9 +20,13 @@ use anyhow::{Result, Context, bail, anyhow};
 
 pub fn run_main() -> Result<()> {
     tracing::debug!("run main");
+    let args = CmdArgs::parse();
 
     // let vpn_if = "ppp0";
-    let vpn_if = "utun4";
+    // let vpn_if = "utun4";
+
+    let vpn_if = &args.vpn_if;
+    let eth_if = &args.eth_if;
 
     let vpn_ops: Arc<dyn IfOps> = if vpn_if.starts_with("ppp") {
         Arc::new(PppOps)
@@ -30,9 +36,14 @@ pub fn run_main() -> Result<()> {
         bail!("unknown vpn type of [{vpn_if}]")
     };
 
+    let ctx = Arc::new(RunContext {
+        vpn_down: AtomicBool::new(false),
+        vpn_ops,
+    });
+
     let config = Arc::new(Config {
         en: IntfArgs {
-            name: "en0".into(),
+            name: eth_if.into(),
             mtu: 1500,
         },
         ppp: IntfArgs {
@@ -45,7 +56,7 @@ pub fn run_main() -> Result<()> {
     let mut last_err: Option<String> = None;
 
     loop {
-        let r = run_loop(&config, vpn_ops.clone());
+        let r = run_loop(&config, ctx.clone(), &mut last_err);
         if let Err(e) = r {
             let err_msg = format!("{e:?}");
             if last_err.as_ref() != Some(&err_msg) {
@@ -53,45 +64,48 @@ pub fn run_main() -> Result<()> {
                 last_err = Some(err_msg);
             }
         }
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(3000));
     }
     
 }
 
-fn run_loop(config: &Arc<Config>, vpn_ops: Arc<dyn IfOps>) -> Result<()> {
+fn run_loop(config: &Arc<Config>, ctx: Arc<RunContext>, last_err: &mut Option<String>) -> Result<()> {
     let (en0, mut en0_tx, mut en0_rx) = make_interface_and_channel(&config.en.name)
     .with_context(||format!("failed to make interface [{}]", config.en.name))?;
 
     let (ppp0, mut ppp0_tx, mut ppp0_rx) = make_interface_and_channel(&config.ppp.name)
     .with_context(||format!("failed to make interface [{}]", config.ppp.name))?;
 
-    debug!("-- {}", en0);
-    debug!("-- {}", ppp0);
-
-    debug!("-- en0: {:?}", en0);
-    debug!("-- vpn: {:?}", ppp0);
-
-    let en0_mac = en0.mac.with_context(||"no mac address of en0")?;
+    let en0_mac = en0.mac.with_context(||"no mac address of eth")?;
     let en0_ip = find_ipv4(&en0)?;
     let ppp0_ip = find_ipv4(&ppp0)?;
-    debug!("found en0 ip: {en0_ip:?}");
-    debug!("found ppp0 ip: {ppp0_ip:?}");
+
+    debug!("-- eth: {}", en0);
+    debug!("-- vpn: {}", ppp0);
+
+
+    debug!("found eth ip: {en0_ip:?}");
+    debug!("found vpn ip: {ppp0_ip:?}");
     debug!("ipv4_mcast_addr {:?}", config.mcast_addr);
 
+    *last_err = None;
+    ctx.vpn_down.store(false, Ordering::Relaxed);
 
     let recv_src_ip = en0_ip;
     let send_src_ip = ppp0_ip;
     let config0 = config.clone();
-    let vpn_ops0: Arc<dyn IfOps> = vpn_ops.clone();
+    let ctx0 = ctx.clone();
     let en0_to_ppp0 = thread::spawn(move || {
-        let r = en0_to_pp0(&config0, &mut en0_rx, &mut ppp0_tx, recv_src_ip, send_src_ip, vpn_ops0);
+        let r = en0_to_pp0(&config0, &mut en0_rx, &mut ppp0_tx, recv_src_ip, send_src_ip, &ctx0);
+        ctx0.vpn_down.store(true, Ordering::Relaxed);
         debug!("en0_to_ppp0 finished with [{r:?}]");
     });
 
     let config0 = config.clone();
-    let vpn_ops0: Arc<dyn IfOps> = vpn_ops.clone();
+    let ctx0 = ctx.clone();
     let ppp0_to_en0 = thread::spawn(move || {
-        let r = ppp0_to_en0(&config0, &mut ppp0_rx, &mut en0_tx, en0_mac, en0_mac, vpn_ops0);
+        let r = ppp0_to_en0(&config0, &mut ppp0_rx, &mut en0_tx, en0_mac, en0_mac, &ctx0);
+        ctx0.vpn_down.store(true, Ordering::Relaxed);
         debug!("ppp0_to_en0 finished with [{r:?}]");
     });
     
@@ -144,7 +158,7 @@ fn ppp0_to_en0(
     en0_tx: &mut Box<dyn DataLinkSender>,
     send_src_mac: MacAddr,
     send_dst_mac: MacAddr,
-    vpn_obs: Arc<dyn IfOps>,
+    ctx: &Arc<RunContext>,
 ) -> Result<()> {
     let mut ether_buf = vec![0u8; 1700];
     let mut ethernet_frame = MutableEthernetPacket::new(&mut ether_buf[..])
@@ -158,7 +172,7 @@ fn ppp0_to_en0(
         let frame = ppp0_rx.next().with_context(||"read frame failed")?;
         // let packet = Ipv4Packet::new(&frame[4..])
         // .with_context(||"parse ipv4 packet failed")?;
-        let packet = vpn_obs.parse_packet(frame)?;
+        let packet = ctx.vpn_ops.parse_packet(frame)?;
         // tracing::debug!("  ipv4 packet: protocol {}", packet.get_next_level_protocol());
         
         if packet.get_next_level_protocol() == IpNextHeaderProtocols::Udp {
@@ -202,7 +216,7 @@ fn en0_to_pp0(
     ppp0_tx: &mut Box<dyn DataLinkSender>,
     recv_src_ip: Ipv4Addr,
     send_src_ip: Ipv4Addr,
-    vpn_obs: Arc<dyn IfOps>,
+    ctx: &Arc<RunContext>,
 ) -> Result<()> {
     let mut ether_buf = vec![0u8; 1700];
 
@@ -212,6 +226,9 @@ fn en0_to_pp0(
 
     loop {
         let frame = en0_rx.next().with_context(||"read frame failed")?;
+        if ctx.vpn_down.load(Ordering::Relaxed) {
+            bail!("vpn has down")
+        }
 
         let ether_frame = EthernetPacket::new(&frame[..])
         .with_context(||"parse ether packet failed")?;
@@ -247,7 +264,7 @@ fn en0_to_pp0(
                         // ether_buf[4..4+ipv4_data.len()].clone_from_slice(ipv4_data);
                         // let ether_packet = &ether_buf[..4+ipv4_data.len()];
 
-                        let ether_packet = vpn_obs.build_packet(ipv4_data, &mut ether_buf)?;
+                        let ether_packet = ctx.vpn_ops.build_packet(ipv4_data, &mut ether_buf)?;
                         
                         // ethernet_frame.set_payload(ipv4_data);
                         // let eframe = ethernet_frame.to_immutable();
@@ -268,6 +285,10 @@ fn en0_to_pp0(
     }
 }
 
+struct RunContext {
+    vpn_down: AtomicBool,
+    vpn_ops: Arc<dyn IfOps>,
+}
 
 trait IfOps: Send + Sync {
     fn parse_packet<'p>(&self, packet: &'p [u8]) -> Result<Ipv4Packet<'p>>;
@@ -309,3 +330,12 @@ impl IfOps for UtunOps {
     }
 }
 
+#[derive(Parser, Debug)]
+#[clap(name = "mdns-bridge", about, version)]
+pub struct CmdArgs {
+    #[clap(long_help = "vpn network interface")]
+    vpn_if: String,
+
+    #[clap(long="eth", long_help = "physical network interface", default_value="en0")]
+    eth_if: String,
+}
