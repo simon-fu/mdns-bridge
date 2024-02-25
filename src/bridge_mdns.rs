@@ -9,6 +9,7 @@ use pnet::packet::udp::UdpPacket;
 use pnet::packet::{Packet, PacketSize, MutablePacket};
 use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket, EtherTypes};
 use pnet::util::MacAddr;
+use pretty_hex::PrettyHex;
 use tracing::{debug, error};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -194,6 +195,15 @@ fn ppp0_to_en0(
 
                     let ipv4_data = packet.packet();
 
+                    {
+
+                        dump_mdns_packet(
+                            packet.get_source(), udp.get_source(),
+                            ip, port,
+                            udp.payload(),
+                        );
+                    }
+
                     ethernet_frame.set_payload(ipv4_data);
                     let eframe = ethernet_frame.to_immutable();
                     let ether_packet = &eframe.packet()[..eframe.packet_size() + ipv4_data.len()];
@@ -338,4 +348,16 @@ pub struct CmdArgs {
 
     #[clap(long="eth", long_help = "physical network interface", default_value="en0")]
     eth_if: String,
+}
+
+fn dump_mdns_packet(
+    src_ip: Ipv4Addr,
+    src_port: u16,
+    dst_ip: Ipv4Addr,
+    dst_port: u16,
+    payload: &[u8],
+) {
+    tracing::debug!("  mdns hex [{src_ip}:{src_port}] -> [{dst_ip}:{dst_port}]: {:?}", payload.hex_dump());
+    let r = simple_dns::Packet::parse(payload);
+    tracing::debug!("  parsed dns [{r:#?}]");
 }

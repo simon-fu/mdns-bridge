@@ -8,10 +8,12 @@ use tracing_subscriber::{EnvFilter, fmt::{time::OffsetTime, MakeWriter}};
 
 // pub mod mdns;
 pub mod bridge_mdns;
+pub mod dump_mdns;
 
 fn main() -> Result<()>{
     init_log();
     bridge_mdns::run_main()?;
+    // dump_mdns::run_dump_eth("en0")?;
     Ok(())
 }
 
